@@ -611,3 +611,13 @@ table.data-table {
   }
   .tab-btn { white-space: nowrap; }
 }
+
+/* Quick action links in admin dashboard */
+.quick-action-link { text-decoration: none; display: block; }
+.quick-action-card {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 12px; border-radius: 8px;
+  background: var(--bg); border: 1px solid var(--border);
+  transition: border-color 0.12s;
+}
+.quick-action-link:hover .quick-action-card { border-color: var(--accent); }

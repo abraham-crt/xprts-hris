@@ -190,10 +190,8 @@ async function AdminDashboard() {
               { href: '/dashboard/admin/payroll', label: 'Payroll Report', desc: 'Export CSV for the period' },
               { href: '/dashboard/admin/time', label: 'Team Time', desc: 'View all clock-in records' },
             ].map(item => (
-              <Link key={item.href} href={item.href} style={{ textDecoration: 'none' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', borderRadius: 8, background: 'var(--bg)', border: '1px solid var(--border)', transition: 'border-color 0.12s' }}
-                  onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--accent)')}
-                  onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}>
+              <Link key={item.href} href={item.href} className="quick-action-link">
+                <div className="quick-action-card">
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>{item.label}</div>
                     <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{item.desc}</div>
