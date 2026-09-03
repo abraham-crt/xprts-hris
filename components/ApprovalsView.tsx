@@ -168,12 +168,16 @@ export function ApprovalsView({ employees, initialRequests }: {
   const [reviewing, setReviewing] = useState<LeaveRequest | null>(null)
   const [tab, setTab] = useState<'pending' | 'approved' | 'denied' | 'all'>('pending')
   const [search, setSearch] = useState('')
-  const [sortOrder, setSortOrder] = useState<'newest' | 'oldest' | 'days_asc' | 'days_desc'>('oldest')
+  const [sortOrder, setSortOrder] = useState<'newest' | 'oldest' | 'days_asc' | 'days_desc' | 'name_asc' | 'name_desc'>('oldest')
   const [approverFilter, setApproverFilter] = useState<string>('all')
+  const [dateRange, setDateRange] = useState<'all' | 'today' | 'week' | 'month' | 'custom'>('all')
+  const [customFrom, setCustomFrom] = useState('')
+  const [customTo, setCustomTo] = useState('')
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [bulkSaving, setBulkSaving] = useState(false)
 
   const empMap = Object.fromEntries(employees.map(e => [e.id, e]))
+  const emailMap = Object.fromEntries(employees.map(e => [e.work_email, e]))
 
   const pending = requests.filter(r => r.status === 'pending')
 
@@ -218,13 +222,36 @@ export function ApprovalsView({ employees, initialRequests }: {
       base = base.filter(r => r.reviewed_by === approverFilter)
     }
 
+    if (dateRange !== 'all') {
+      const laToday = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
+      let from = '', to = laToday
+      if (dateRange === 'today') {
+        from = laToday
+      } else if (dateRange === 'week') {
+        const d = new Date(laToday + 'T12:00:00')
+        d.setDate(d.getDate() - 7)
+        from = d.toISOString().split('T')[0]
+      } else if (dateRange === 'month') {
+        const [y, m] = laToday.split('-')
+        from = `${y}-${m}-01`
+      } else if (dateRange === 'custom') {
+        from = customFrom; to = customTo
+      }
+      if (from) base = base.filter(r => r.created_at.slice(0, 10) >= from && r.created_at.slice(0, 10) <= to)
+    }
+
     return [...base].sort((a, b) => {
       if (sortOrder === 'days_asc') return a.days_requested - b.days_requested
       if (sortOrder === 'days_desc') return b.days_requested - a.days_requested
+      if (sortOrder === 'name_asc' || sortOrder === 'name_desc') {
+        const an = empMap[a.employee_id]?.name ?? ''
+        const bn = empMap[b.employee_id]?.name ?? ''
+        return sortOrder === 'name_asc' ? an.localeCompare(bn) : bn.localeCompare(an)
+      }
       const cmp = new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
       return sortOrder === 'oldest' ? cmp : -cmp
     })
-  }, [requests, tab, search, sortOrder, approverFilter, empMap, pending])
+  }, [requests, tab, search, sortOrder, approverFilter, dateRange, customFrom, customTo, empMap, pending])
 
   function handleDone(updated: LeaveRequest) {
     setRequests(prev => prev.map(r => r.id === updated.id ? updated : r))
@@ -251,6 +278,9 @@ export function ApprovalsView({ employees, initialRequests }: {
   const approverNames = [...new Set(
     requests.filter(r => r.reviewed_by).map(r => r.reviewed_by!)
   )]
+  function approverLabel(email: string) {
+    return emailMap[email]?.name ?? email
+  }
 
   const tabCounts = {
     pending: pending.length,
@@ -287,52 +317,100 @@ export function ApprovalsView({ employees, initialRequests }: {
       </div>
 
       {/* Controls */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <div className="tabs" style={{ marginBottom: 0 }}>
-          {(['pending', 'approved', 'denied', 'all'] as const).map(t => (
-            <button key={t} onClick={() => { setTab(t); setSelected(new Set()) }} className={`tab-btn ${tab === t ? 'active' : ''}`}>
-              {t.charAt(0).toUpperCase() + t.slice(1)}
-              {tabCounts[t] > 0 && <span style={{ marginLeft: 4, opacity: 0.7 }}>({tabCounts[t]})</span>}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {/* Row 1: Status tabs + date range + bulk */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <div className="tabs" style={{ marginBottom: 0 }}>
+            {(['pending', 'approved', 'denied', 'all'] as const).map(t => (
+              <button key={t} onClick={() => { setTab(t); setSelected(new Set()) }} className={`tab-btn ${tab === t ? 'active' : ''}`}>
+                {t.charAt(0).toUpperCase() + t.slice(1)}
+                {tabCounts[t] > 0 && <span style={{ marginLeft: 4, opacity: 0.7 }}>({tabCounts[t]})</span>}
+              </button>
+            ))}
+          </div>
+          {tab === 'pending' && selected.size > 0 && (
+            <button
+              onClick={handleBulkApprove}
+              disabled={bulkSaving}
+              className="btn btn-green"
+              style={{ fontSize: 12.5, padding: '6px 14px', whiteSpace: 'nowrap' }}
+            >
+              {bulkSaving ? 'Approving…' : `Approve ${selected.size} selected`}
+            </button>
+          )}
+        </div>
+        {/* Row 2: Date range filter */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Submitted:</span>
+          {([
+            { v: 'all', label: 'All Time' },
+            { v: 'today', label: 'Today' },
+            { v: 'week', label: 'Last 7 Days' },
+            { v: 'month', label: 'This Month' },
+            { v: 'custom', label: 'Custom' },
+          ] as const).map(opt => (
+            <button
+              key={opt.v}
+              onClick={() => setDateRange(opt.v)}
+              className={`tab-btn ${dateRange === opt.v ? 'active' : ''}`}
+              style={{ fontSize: 11, padding: '4px 10px' }}
+            >
+              {opt.label}
             </button>
           ))}
+          {dateRange === 'custom' && (
+            <>
+              <input
+                type="date"
+                value={customFrom}
+                onChange={e => setCustomFrom(e.target.value)}
+                className="field-input"
+                style={{ marginBottom: 0, width: 140, fontSize: 12 }}
+              />
+              <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>→</span>
+              <input
+                type="date"
+                value={customTo}
+                onChange={e => setCustomTo(e.target.value)}
+                min={customFrom}
+                className="field-input"
+                style={{ marginBottom: 0, width: 140, fontSize: 12 }}
+              />
+            </>
+          )}
         </div>
-        <select
-          value={sortOrder}
-          onChange={e => setSortOrder(e.target.value as typeof sortOrder)}
-          className="field-input"
-          style={{ width: 150, marginBottom: 0, fontSize: 12.5 }}
-        >
-          <option value="oldest">Oldest first</option>
-          <option value="newest">Newest first</option>
-          <option value="days_desc">Most days first</option>
-          <option value="days_asc">Fewest days first</option>
-        </select>
-        <select
-          value={approverFilter}
-          onChange={e => setApproverFilter(e.target.value)}
-          className="field-input"
-          style={{ width: 150, marginBottom: 0, fontSize: 12.5 }}
-        >
-          <option value="all">All Approvers</option>
-          {approverNames.map(n => <option key={n} value={n}>{empMap[n]?.name ?? n}</option>)}
-        </select>
-        <input
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder="Search employee…"
-          className="field-input"
-          style={{ maxWidth: 180, marginBottom: 0, fontSize: 12.5 }}
-        />
-        {tab === 'pending' && selected.size > 0 && (
-          <button
-            onClick={handleBulkApprove}
-            disabled={bulkSaving}
-            className="btn btn-green"
-            style={{ fontSize: 12.5, padding: '6px 14px', whiteSpace: 'nowrap' }}
+        {/* Row 3: Sort, approver filter, search */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <select
+            value={sortOrder}
+            onChange={e => setSortOrder(e.target.value as typeof sortOrder)}
+            className="field-input"
+            style={{ width: 170, marginBottom: 0, fontSize: 12.5 }}
           >
-            {bulkSaving ? 'Approving…' : `Approve ${selected.size} selected`}
-          </button>
-        )}
+            <option value="oldest">Submitted: Oldest first</option>
+            <option value="newest">Submitted: Newest first</option>
+            <option value="days_desc">Leave days: Most first</option>
+            <option value="days_asc">Leave days: Fewest first</option>
+            <option value="name_asc">Employee: A → Z</option>
+            <option value="name_desc">Employee: Z → A</option>
+          </select>
+          <select
+            value={approverFilter}
+            onChange={e => setApproverFilter(e.target.value)}
+            className="field-input"
+            style={{ width: 180, marginBottom: 0, fontSize: 12.5 }}
+          >
+            <option value="all">All Approvers</option>
+            {approverNames.map(n => <option key={n} value={n}>{approverLabel(n)}</option>)}
+          </select>
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search employee…"
+            className="field-input"
+            style={{ maxWidth: 180, marginBottom: 0, fontSize: 12.5 }}
+          />
+        </div>
       </div>
 
       {/* Aging notice for pending */}

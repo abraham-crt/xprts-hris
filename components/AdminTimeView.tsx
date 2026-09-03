@@ -414,6 +414,21 @@ export function AdminTimeView({ employees, entries, edits, today, yesterday, wee
             </table>
           </div>
         </div>
+
+        {/* OT Panel Yesterday */}
+        {rows.filter(r => r.ot > 0).length > 0 && (
+          <div className="card" style={{ background: 'rgba(245,158,11,0.06)', borderColor: 'rgba(245,158,11,0.3)' }}>
+            <div className="card-title" style={{ color: 'var(--amber)', marginBottom: 10 }}>⚠ Overtime Yesterday — {fmtDate(yesterday)}</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+              {rows.filter(r => r.ot > 0).sort((a, b) => b.ot - a.ot).map(({ emp, h, ot }) => (
+                <div key={emp.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', background: 'var(--surface)', borderRadius: 8, border: '1px solid var(--border)' }}>
+                  <span style={{ fontWeight: 600, fontSize: 13 }}>{emp.name}</span>
+                  <span style={{ fontSize: 12, color: 'var(--amber)', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{fmtH(h)} (+{fmtH(ot)})</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     )
   }
