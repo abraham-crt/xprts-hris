@@ -183,7 +183,7 @@ async function AdminDashboard() {
           </div>
         </div>
         <div className="stat-card">
-          <div className="stat-label">On PTO Today</div>
+          <div className="stat-label">On Leave Today</div>
           <div className="stat-value" style={{ color: (outToday?.length ?? 0) > 0 ? 'var(--amber)' : 'var(--text-muted)' }}>
             {outToday?.length ?? 0}
           </div>
@@ -327,7 +327,7 @@ async function AdminDashboard() {
 
         {/* On PTO today */}
         <div className="card">
-          <div className="card-title" style={{ marginBottom: 12 }}>On PTO Today</div>
+          <div className="card-title" style={{ marginBottom: 12 }}>On Leave Today</div>
           {(outToday ?? []).length === 0 ? (
             <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>No approved leave for today.</p>
           ) : (
