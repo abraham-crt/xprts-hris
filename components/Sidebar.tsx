@@ -76,6 +76,7 @@ export function Sidebar({ role, name, email, isOpen, onClose }: {
             <NavLink href="/dashboard/admin/time" label="Team Time" icon="users" onClick={onClose} />
             <NavLink href="/dashboard/admin/employees" label="Employees" icon="users" onClick={onClose} />
             <NavLink href="/dashboard/admin/payroll" label="Payroll" icon="chart" onClick={onClose} />
+            <NavLink href="/dashboard/admin/reports" label="Reports" icon="chart" onClick={onClose} />
           </>
         )}
       </nav>

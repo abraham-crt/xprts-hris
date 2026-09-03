@@ -10,7 +10,7 @@ export async function GET() {
 
   const { data, error } = await supabaseAdmin
     .from('employees')
-    .select('id, name, work_email, role, status, employment_start_date, office_location, monthly_salary, approver_id')
+    .select('id, name, work_email, role, status, employment_start_date, office_location, monthly_salary, approver_id, employment_type, employee_code, manager_id, shift_schedule, payslip_delivery')
     .order('name')
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -22,13 +22,12 @@ export async function POST(req: NextRequest) {
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   if (session.user.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const { name, work_email, role, office_location, employment_start_date, monthly_salary, approver_id, employment_type, employee_code } = await req.json()
+  const { name, work_email, role, office_location, employment_start_date, monthly_salary, approver_id, employment_type, employee_code, manager_id, shift_schedule, payslip_delivery } = await req.json()
 
   if (!name || !work_email || !role || !office_location || !employment_start_date) {
     return NextResponse.json({ error: 'All required fields must be filled.' }, { status: 400 })
   }
 
-  // Check email uniqueness
   const { data: existing } = await supabaseAdmin
     .from('employees')
     .select('id')
@@ -50,17 +49,16 @@ export async function POST(req: NextRequest) {
       approver_id: approver_id || null,
       employment_type: employment_type || 'full-time',
       employee_code: employee_code || null,
+      manager_id: manager_id || null,
+      shift_schedule: shift_schedule || null,
+      payslip_delivery: payslip_delivery || 'email',
     })
     .select()
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // Initialize PTO balance
-  await supabaseAdmin.from('pto_balances').insert({
-    employee_id: data.id,
-    current_balance: 0,
-  })
+  await supabaseAdmin.from('pto_balances').insert({ employee_id: data.id, current_balance: 0 })
 
   return NextResponse.json(data, { status: 201 })
 }
@@ -70,8 +68,11 @@ export async function PUT(req: NextRequest) {
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   if (session.user.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const { id, name, role, status, office_location, monthly_salary, approver_id, employment_type, employee_code } = await req.json()
+  const { id, name, role, status, office_location, monthly_salary, approver_id, employment_type, employee_code, manager_id, shift_schedule, payslip_delivery } = await req.json()
   if (!id) return NextResponse.json({ error: 'Employee ID required.' }, { status: 400 })
+
+  // Fetch current salary for audit trail
+  const { data: current } = await supabaseAdmin.from('employees').select('monthly_salary').eq('id', id).single()
 
   const updates: Record<string, unknown> = {}
   if (name !== undefined) updates.name = name
@@ -82,6 +83,9 @@ export async function PUT(req: NextRequest) {
   if (approver_id !== undefined) updates.approver_id = approver_id || null
   if (employment_type !== undefined) updates.employment_type = employment_type
   if (employee_code !== undefined) updates.employee_code = employee_code || null
+  if (manager_id !== undefined) updates.manager_id = manager_id || null
+  if (shift_schedule !== undefined) updates.shift_schedule = shift_schedule || null
+  if (payslip_delivery !== undefined) updates.payslip_delivery = payslip_delivery || 'email'
 
   const { data, error } = await supabaseAdmin
     .from('employees')
@@ -91,5 +95,20 @@ export async function PUT(req: NextRequest) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Audit salary change
+  if (monthly_salary !== undefined && monthly_salary !== current?.monthly_salary) {
+    await supabaseAdmin.from('audit_log').insert({
+      employee_id: id,
+      action: 'salary_changed',
+      details: {
+        previous: current?.monthly_salary,
+        updated: monthly_salary,
+        changed_by: session.user.id,
+      },
+      performed_at: new Date().toISOString(),
+    })
+  }
+
   return NextResponse.json(data)
 }

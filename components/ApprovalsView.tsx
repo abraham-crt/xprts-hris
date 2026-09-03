@@ -168,7 +168,10 @@ export function ApprovalsView({ employees, initialRequests }: {
   const [reviewing, setReviewing] = useState<LeaveRequest | null>(null)
   const [tab, setTab] = useState<'pending' | 'approved' | 'denied' | 'all'>('pending')
   const [search, setSearch] = useState('')
-  const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('oldest')
+  const [sortOrder, setSortOrder] = useState<'newest' | 'oldest' | 'days_asc' | 'days_desc'>('oldest')
+  const [approverFilter, setApproverFilter] = useState<string>('all')
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [bulkSaving, setBulkSaving] = useState(false)
 
   const empMap = Object.fromEntries(employees.map(e => [e.id, e]))
 
@@ -211,16 +214,43 @@ export function ApprovalsView({ employees, initialRequests }: {
       })
     }
 
+    if (approverFilter !== 'all') {
+      base = base.filter(r => r.reviewed_by === approverFilter)
+    }
+
     return [...base].sort((a, b) => {
+      if (sortOrder === 'days_asc') return a.days_requested - b.days_requested
+      if (sortOrder === 'days_desc') return b.days_requested - a.days_requested
       const cmp = new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
       return sortOrder === 'oldest' ? cmp : -cmp
     })
-  }, [requests, tab, search, sortOrder, empMap, pending])
+  }, [requests, tab, search, sortOrder, approverFilter, empMap, pending])
 
   function handleDone(updated: LeaveRequest) {
     setRequests(prev => prev.map(r => r.id === updated.id ? updated : r))
     setReviewing(null)
   }
+
+  async function handleBulkApprove() {
+    if (selected.size === 0) return
+    setBulkSaving(true)
+    const ids = [...selected]
+    await Promise.all(ids.map(id =>
+      fetch('/api/approvals', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requestId: id, action: 'approve', note: '' }),
+      }).then(r => r.json()).then(updated => {
+        setRequests(prev => prev.map(r => r.id === updated.id ? updated : r))
+      })
+    ))
+    setSelected(new Set())
+    setBulkSaving(false)
+  }
+
+  const approverNames = [...new Set(
+    requests.filter(r => r.reviewed_by).map(r => r.reviewed_by!)
+  )]
 
   const tabCounts = {
     pending: pending.length,
@@ -257,10 +287,10 @@ export function ApprovalsView({ employees, initialRequests }: {
       </div>
 
       {/* Controls */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <div className="tabs" style={{ flex: 1, marginBottom: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <div className="tabs" style={{ marginBottom: 0 }}>
           {(['pending', 'approved', 'denied', 'all'] as const).map(t => (
-            <button key={t} onClick={() => setTab(t)} className={`tab-btn ${tab === t ? 'active' : ''}`}>
+            <button key={t} onClick={() => { setTab(t); setSelected(new Set()) }} className={`tab-btn ${tab === t ? 'active' : ''}`}>
               {t.charAt(0).toUpperCase() + t.slice(1)}
               {tabCounts[t] > 0 && <span style={{ marginLeft: 4, opacity: 0.7 }}>({tabCounts[t]})</span>}
             </button>
@@ -268,20 +298,41 @@ export function ApprovalsView({ employees, initialRequests }: {
         </div>
         <select
           value={sortOrder}
-          onChange={e => setSortOrder(e.target.value as 'newest' | 'oldest')}
+          onChange={e => setSortOrder(e.target.value as typeof sortOrder)}
           className="field-input"
-          style={{ width: 140, marginBottom: 0, fontSize: 12.5 }}
+          style={{ width: 150, marginBottom: 0, fontSize: 12.5 }}
         >
           <option value="oldest">Oldest first</option>
           <option value="newest">Newest first</option>
+          <option value="days_desc">Most days first</option>
+          <option value="days_asc">Fewest days first</option>
+        </select>
+        <select
+          value={approverFilter}
+          onChange={e => setApproverFilter(e.target.value)}
+          className="field-input"
+          style={{ width: 150, marginBottom: 0, fontSize: 12.5 }}
+        >
+          <option value="all">All Approvers</option>
+          {approverNames.map(n => <option key={n} value={n}>{empMap[n]?.name ?? n}</option>)}
         </select>
         <input
           value={search}
           onChange={e => setSearch(e.target.value)}
           placeholder="Search employee…"
           className="field-input"
-          style={{ maxWidth: 200, marginBottom: 0, fontSize: 12.5 }}
+          style={{ maxWidth: 180, marginBottom: 0, fontSize: 12.5 }}
         />
+        {tab === 'pending' && selected.size > 0 && (
+          <button
+            onClick={handleBulkApprove}
+            disabled={bulkSaving}
+            className="btn btn-green"
+            style={{ fontSize: 12.5, padding: '6px 14px', whiteSpace: 'nowrap' }}
+          >
+            {bulkSaving ? 'Approving…' : `Approve ${selected.size} selected`}
+          </button>
+        )}
       </div>
 
       {/* Aging notice for pending */}
@@ -301,6 +352,16 @@ export function ApprovalsView({ employees, initialRequests }: {
           <table className="data-table">
             <thead>
               <tr>
+                {tab === 'pending' && (
+                  <th style={{ width: 32 }}>
+                    <input
+                      type="checkbox"
+                      checked={filtered.length > 0 && filtered.every(r => selected.has(r.id))}
+                      onChange={e => setSelected(e.target.checked ? new Set(filtered.map(r => r.id)) : new Set())}
+                      style={{ cursor: 'pointer' }}
+                    />
+                  </th>
+                )}
                 <th>Employee</th>
                 <th>Type</th>
                 <th>Period</th>
@@ -315,7 +376,7 @@ export function ApprovalsView({ employees, initialRequests }: {
               {filtered.length === 0
                 ? (
                   <tr>
-                    <td colSpan={tab === 'pending' ? 8 : 7} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px 16px' }}>
+                    <td colSpan={tab === 'pending' ? 9 : 7} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px 16px' }}>
                       {search ? 'No requests match your search.' : tab === 'pending' ? 'No pending requests.' : 'No requests.'}
                     </td>
                   </tr>
@@ -324,6 +385,22 @@ export function ApprovalsView({ employees, initialRequests }: {
                   const age = ageDays(r.created_at)
                   return (
                     <tr key={r.id}>
+                      {tab === 'pending' && (
+                        <td style={{ width: 32 }}>
+                          {r.status === 'pending' && (
+                            <input
+                              type="checkbox"
+                              checked={selected.has(r.id)}
+                              onChange={e => setSelected(prev => {
+                                const next = new Set(prev)
+                                if (e.target.checked) next.add(r.id); else next.delete(r.id)
+                                return next
+                              })}
+                              style={{ cursor: 'pointer' }}
+                            />
+                          )}
+                        </td>
+                      )}
                       <td style={{ fontWeight: 500, color: 'var(--text-primary)' }}>
                         {empMap[r.employee_id]?.name ?? '—'}
                       </td>
