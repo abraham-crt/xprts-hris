@@ -5,6 +5,8 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { laToday, laPeriodBounds } from '@/lib/dates'
 import { computeAccrualUpdates, type AccrualEvent } from '@/lib/pto'
 import { holidayMap, usFederalHolidays } from '@/lib/holidays'
+import { leaveTypeLabel } from '@/lib/countries'
+import { ExpandableNameList } from '@/components/ExpandableNameList'
 import Link from 'next/link'
 
 export default async function DashboardPage() {
@@ -72,13 +74,13 @@ async function AdminDashboard() {
       .eq('status', 'pending'),
     supabaseAdmin
       .from('leave_requests')
-      .select('start_date, end_date, days_requested, employees!employee_id(name)')
+      .select('start_date, end_date, days_requested, leave_type, employees!employee_id(name)')
       .eq('status', 'approved')
       .lte('start_date', today)
       .gte('end_date', today),
     supabaseAdmin
       .from('leave_requests')
-      .select('start_date, end_date, days_requested, employees!employee_id(name)')
+      .select('start_date, end_date, days_requested, leave_type, employees!employee_id(name)')
       .eq('status', 'approved')
       .lte('start_date', tomorrow)
       .gte('end_date', tomorrow),
@@ -214,24 +216,14 @@ async function AdminDashboard() {
               </span>
             )}
           </div>
-          {(missingClockOuts ?? []).length === 0 ? (
-            <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>None — all clear.</p>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-              {(missingClockOuts ?? []).slice(0, 4).map((e: { employee_id: string; date: string; clock_in: string; employees: { name: string } | { name: string }[] }, i: number) => {
-                const emp = Array.isArray(e.employees) ? e.employees[0] : e.employees
-                return (
-                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-                    <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{emp?.name ?? '—'}</span>
-                    <span style={{ color: 'var(--red)', fontVariantNumeric: 'tabular-nums' }}>{e.date}</span>
-                  </div>
-                )
-              })}
-              {(missingClockOuts?.length ?? 0) > 4 && (
-                <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: 0 }}>+{missingClockOuts!.length - 4} more</p>
-              )}
-            </div>
-          )}
+          <ExpandableNameList
+            items={(missingClockOuts ?? []).map((e: { employee_id: string; date: string; clock_in: string; employees: { name: string } | { name: string }[] }) => {
+              const emp = Array.isArray(e.employees) ? e.employees[0] : e.employees
+              return { primary: emp?.name ?? '—', secondary: e.date }
+            })}
+            limit={4}
+            emptyText="None — all clear."
+          />
           <Link href="/dashboard/admin/time" style={{ display: 'block', marginTop: 10, fontSize: 11, color: 'var(--accent)', fontWeight: 500, textDecoration: 'none' }}>View Team Time →</Link>
         </div>
 
@@ -246,21 +238,14 @@ async function AdminDashboard() {
             )}
           </div>
           <p style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8 }}>Clocked in after 9:30 AM LA time</p>
-          {lateArrivals.length === 0 ? (
-            <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>No late arrivals.</p>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-              {lateArrivals.slice(0, 4).map((e: { employee_id: string; clock_in: string; employees: { name: string } | { name: string }[] }, i: number) => {
-                const emp = Array.isArray(e.employees) ? e.employees[0] : e.employees
-                return (
-                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-                    <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{emp?.name ?? '—'}</span>
-                    <span style={{ color: 'var(--amber)', fontVariantNumeric: 'tabular-nums' }}>{fmtLaTime(e.clock_in)}</span>
-                  </div>
-                )
-              })}
-            </div>
-          )}
+          <ExpandableNameList
+            items={lateArrivals.map((e: { employee_id: string; clock_in: string; employees: { name: string } | { name: string }[] }) => {
+              const emp = Array.isArray(e.employees) ? e.employees[0] : e.employees
+              return { primary: emp?.name ?? '—', secondary: fmtLaTime(e.clock_in) }
+            })}
+            limit={5}
+            emptyText="No late arrivals."
+          />
         </div>
 
         {/* Missing clock-ins today */}
@@ -274,20 +259,15 @@ async function AdminDashboard() {
             )}
           </div>
           <p style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8 }}>Active staff with no time entry today</p>
-          {missingClockIns.length === 0 ? (
-            <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>All staff have an entry.</p>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-              {missingClockIns.slice(0, 5).map(e => (
-                <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
-                  <span className="dot-amber" />
-                  <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{e.name}</span>
-                  {e.office_location && <span style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'capitalize', marginLeft: 'auto' }}>{e.office_location}</span>}
-                </div>
-              ))}
-              {missingClockIns.length > 5 && <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: 0 }}>+{missingClockIns.length - 5} more</p>}
-            </div>
-          )}
+          <ExpandableNameList
+            items={missingClockIns.map(e => ({
+              primary: e.name,
+              secondary: e.office_location ?? undefined,
+              dot: 'amber' as const,
+            }))}
+            limit={5}
+            emptyText="All staff have an entry."
+          />
         </div>
       </div>
 
@@ -328,47 +308,36 @@ async function AdminDashboard() {
         {/* On PTO today */}
         <div className="card">
           <div className="card-title" style={{ marginBottom: 12 }}>On Leave Today</div>
-          {(outToday ?? []).length === 0 ? (
-            <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>No approved leave for today.</p>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-              {(outToday ?? []).map((r: { days_requested: number; start_date: string; end_date: string; employees: { name: string } | { name: string }[] }, i: number) => {
-                const emp = Array.isArray(r.employees) ? r.employees[0] : r.employees
-                return (
-                  <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 12.5 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span className="dot-amber" />
-                      <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{emp?.name ?? '—'}</span>
-                    </div>
-                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>thru {r.end_date}</span>
-                  </div>
-                )
-              })}
-            </div>
-          )}
+          <ExpandableNameList
+            items={(outToday ?? []).map((r: { days_requested: number; start_date: string; end_date: string; leave_type?: string; employees: { name: string } | { name: string }[] }) => {
+              const emp = Array.isArray(r.employees) ? r.employees[0] : r.employees
+              return {
+                primary: emp?.name ?? '—',
+                secondary: `thru ${r.end_date}`,
+                dot: 'amber' as const,
+                badge: leaveTypeLabel(r.leave_type ?? 'pto'),
+              }
+            })}
+            limit={5}
+            emptyText="No approved leave for today."
+          />
         </div>
 
         {/* On leave tomorrow */}
         <div className="card">
           <div className="card-title" style={{ marginBottom: 12 }}>On Leave Tomorrow <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 400 }}>({tomorrow})</span></div>
-          {(outTomorrow ?? []).length === 0 ? (
-            <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>No approved leave for tomorrow.</p>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-              {(outTomorrow ?? []).map((r: { days_requested: number; start_date: string; end_date: string; employees: { name: string } | { name: string }[] }, i: number) => {
-                const emp = Array.isArray(r.employees) ? r.employees[0] : r.employees
-                return (
-                  <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 12.5 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span className="dot-amber" />
-                      <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{emp?.name ?? '—'}</span>
-                    </div>
-                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{r.days_requested}d</span>
-                  </div>
-                )
-              })}
-            </div>
-          )}
+          <ExpandableNameList
+            items={(outTomorrow ?? []).map((r: { days_requested: number; start_date: string; end_date: string; employees: { name: string } | { name: string }[] }) => {
+              const emp = Array.isArray(r.employees) ? r.employees[0] : r.employees
+              return {
+                primary: emp?.name ?? '—',
+                secondary: `${r.days_requested}d`,
+                dot: 'amber' as const,
+              }
+            })}
+            limit={5}
+            emptyText="No approved leave for tomorrow."
+          />
         </div>
       </div>
 
@@ -445,29 +414,18 @@ async function AdminDashboard() {
         {/* Pending leave */}
         <div className="card">
           <div className="card-title" style={{ marginBottom: 12 }}>Pending Leave Requests</div>
-          {pending.length === 0 ? (
-            <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>No pending requests.</p>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-              {pending.slice(0, 5).map((r: { id: string; days_requested: number; start_date: string; end_date: string; employees: { name: string } | { name: string }[] }) => {
-                const emp = Array.isArray(r.employees) ? r.employees[0] : r.employees
-                return (
-                  <div key={r.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 12.5 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span className="dot-amber" />
-                      <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{emp?.name ?? '—'}</span>
-                    </div>
-                    <span style={{ fontSize: 11, color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
-                      {r.days_requested}d · {r.start_date}
-                    </span>
-                  </div>
-                )
-              })}
-              {pending.length > 5 && (
-                <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>+{pending.length - 5} more</p>
-              )}
-            </div>
-          )}
+          <ExpandableNameList
+            items={pending.map((r: { id: string; days_requested: number; start_date: string; end_date: string; employees: { name: string } | { name: string }[] }) => {
+              const emp = Array.isArray(r.employees) ? r.employees[0] : r.employees
+              return {
+                primary: emp?.name ?? '—',
+                secondary: `${r.days_requested}d · ${r.start_date}`,
+                dot: 'amber' as const,
+              }
+            })}
+            limit={5}
+            emptyText="No pending requests."
+          />
           <Link href="/dashboard/approvals" style={{ display: 'block', marginTop: 10, fontSize: 11, color: 'var(--accent)', fontWeight: 500, textDecoration: 'none' }}>
             Go to Approvals →
           </Link>

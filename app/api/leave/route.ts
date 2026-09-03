@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { start_date, end_date, is_half_day, reason, file_url } = await req.json()
+  const { start_date, end_date, is_half_day, reason, file_url, leave_type } = await req.json()
 
   if (!start_date) {
     return NextResponse.json({ error: 'Start date is required.' }, { status: 400 })
@@ -100,6 +100,7 @@ export async function POST(req: NextRequest) {
       days_requested,
       reason: reason || null,
       file_url: file_url || null,
+      leave_type: leave_type || 'pto',
       status: 'pending',
     })
     .select()

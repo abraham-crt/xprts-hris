@@ -464,6 +464,7 @@ table.data-table {
 
 .dot-green { background: var(--green); }
 .dot-amber { background: var(--amber); }
+.dot-red { background: var(--red); }
 .dot-gray { background: #D1D5DB; }
 
 /* Clock display */

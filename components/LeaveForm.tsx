@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef } from 'react'
+import { LEAVE_TYPES, leaveTypeLabel } from '@/lib/countries'
 
 type LeaveRequest = {
   id: string
@@ -12,6 +13,8 @@ type LeaveRequest = {
   file_url: string | null
   status: string
   approver_note: string | null
+  leave_type: string
+  reviewed_by: string | null
   created_at: string
 }
 
@@ -19,6 +22,14 @@ const STATUS_BADGE: Record<string, string> = {
   pending: 'badge-amber',
   approved: 'badge-green',
   denied: 'badge-red',
+}
+
+const LEAVE_TYPE_COLOR: Record<string, string> = {
+  pto: '#6366f1',
+  sick: '#ef4444',
+  unpaid: '#78716c',
+  holiday: '#0ea5e9',
+  emergency: '#f97316',
 }
 
 function calcBusinessDays(start: string, end: string): number {
@@ -47,6 +58,7 @@ export function LeaveForm({ initialRequests, ptoBalance }: {
   const [requests, setRequests] = useState(initialRequests)
   const [showForm, setShowForm] = useState(false)
   const [mode, setMode] = useState<'full' | 'half'>('full')
+  const [leaveType, setLeaveType] = useState<string>('pto')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [singleDate, setSingleDate] = useState('')
@@ -55,14 +67,16 @@ export function LeaveForm({ initialRequests, ptoBalance }: {
   const [error, setError] = useState('')
   const [warning, setWarning] = useState('')
   const [saving, setSaving] = useState(false)
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'denied'>('all')
   const fileRef = useRef<HTMLInputElement>(null)
 
   const isHalf = mode === 'half'
   const days = isHalf ? 0.5 : calcBusinessDays(startDate, endDate)
-  const lowBalance = days > 0 && ptoBalance < days
+  const lowBalance = days > 0 && leaveType === 'pto' && ptoBalance < days
 
   function resetForm() {
     setMode('full')
+    setLeaveType('pto')
     setStartDate(''); setEndDate(''); setSingleDate('')
     setReason(''); setFile(null)
     setError(''); setWarning('')
@@ -92,6 +106,7 @@ export function LeaveForm({ initialRequests, ptoBalance }: {
       start_date: isHalf ? singleDate : startDate,
       end_date: isHalf ? singleDate : endDate,
       is_half_day: isHalf,
+      leave_type: leaveType,
       reason: reason || undefined,
       file_url: fileUrl,
     }
@@ -112,6 +127,8 @@ export function LeaveForm({ initialRequests, ptoBalance }: {
     resetForm()
     setSaving(false)
   }
+
+  const filteredRequests = statusFilter === 'all' ? requests : requests.filter(r => r.status === statusFilter)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -146,6 +163,16 @@ export function LeaveForm({ initialRequests, ptoBalance }: {
       {showForm && (
         <div className="card">
           <div style={{ fontSize: 14, fontWeight: 650, color: 'var(--text-primary)', marginBottom: 18 }}>New Leave Request</div>
+
+          {/* Leave type */}
+          <div style={{ marginBottom: 16 }}>
+            <label className="field-label">Leave Type</label>
+            <select value={leaveType} onChange={e => setLeaveType(e.target.value)} className="field-input" style={{ maxWidth: 280 }}>
+              {LEAVE_TYPES.map(t => (
+                <option key={t.value} value={t.value}>{t.label}</option>
+              ))}
+            </select>
+          </div>
 
           {/* Full Day / Half Day toggle */}
           <div style={{ marginBottom: 18 }}>
@@ -270,30 +297,44 @@ export function LeaveForm({ initialRequests, ptoBalance }: {
 
       {/* Request history */}
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-        <div style={{ padding: '14px 24px', borderBottom: '1px solid var(--border)' }}>
+        <div style={{ padding: '14px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div className="card-title" style={{ marginBottom: 0 }}>My Requests</div>
+          <div className="tabs" style={{ marginBottom: 0 }}>
+            {(['all', 'pending', 'approved', 'denied'] as const).map(s => (
+              <button
+                key={s}
+                onClick={() => setStatusFilter(s)}
+                className={`tab-btn ${statusFilter === s ? 'active' : ''}`}
+                style={{ textTransform: 'capitalize', fontSize: 12 }}
+              >
+                {s === 'all' ? `All (${requests.length})` : `${s.charAt(0).toUpperCase() + s.slice(1)} (${requests.filter(r => r.status === s).length})`}
+              </button>
+            ))}
+          </div>
         </div>
         <div className="table-wrap">
           <table className="data-table">
             <thead>
               <tr>
                 <th>Period</th>
+                <th>Type</th>
                 <th>Days</th>
                 <th>Status</th>
+                <th>Approved By</th>
                 <th>Note from Approver</th>
                 <th>Submitted</th>
               </tr>
             </thead>
             <tbody>
-              {requests.length === 0
+              {filteredRequests.length === 0
                 ? (
                   <tr>
-                    <td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px 16px' }}>
-                      No leave requests yet.
+                    <td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px 16px' }}>
+                      No leave requests.
                     </td>
                   </tr>
                 )
-                : requests.map(r => (
+                : filteredRequests.map(r => (
                   <tr key={r.id}>
                     <td style={{ fontSize: 12.5 }}>
                       {fmt(r.start_date)}{r.start_date !== r.end_date ? ` → ${fmt(r.end_date)}` : ''}
@@ -301,11 +342,24 @@ export function LeaveForm({ initialRequests, ptoBalance }: {
                         <span className="badge badge-blue" style={{ marginLeft: 8 }}>Half Day</span>
                       )}
                     </td>
+                    <td>
+                      <span style={{
+                        fontSize: 11, padding: '2px 7px', borderRadius: 4, fontWeight: 700,
+                        background: `${LEAVE_TYPE_COLOR[r.leave_type ?? 'pto'] ?? '#6366f1'}18`,
+                        color: LEAVE_TYPE_COLOR[r.leave_type ?? 'pto'] ?? 'var(--accent)',
+                        textTransform: 'uppercase', letterSpacing: '0.04em',
+                      }}>
+                        {leaveTypeLabel(r.leave_type ?? 'pto')}
+                      </span>
+                    </td>
                     <td style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
                       {r.days_requested}
                     </td>
                     <td>
                       <span className={`badge ${STATUS_BADGE[r.status] ?? 'badge-gray'}`}>{r.status}</span>
+                    </td>
+                    <td style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>
+                      {r.reviewed_by ?? '—'}
                     </td>
                     <td style={{ color: 'var(--text-muted)', fontSize: 12.5, maxWidth: 200 }}>
                       {r.approver_note ?? '—'}

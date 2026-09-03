@@ -11,7 +11,7 @@ export default async function EmployeesPage() {
 
   const { data: employees, error: empError } = await supabaseAdmin
     .from('employees')
-    .select('id, name, work_email, role, status, employment_start_date, office_location, monthly_salary, approver_id')
+    .select('id, name, work_email, role, status, employment_start_date, office_location, monthly_salary, approver_id, employment_type, employee_code')
     .order('name')
 
   if (empError) console.error('[employees page]', empError.message, empError.details)

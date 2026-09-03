@@ -102,6 +102,10 @@ export function PayrollView({ employees: initialEmployees, hoursMap, leaveMap, p
     const d = deductionMap[e.id]
     return sum + (d?.shortfall_deduction ?? 0)
   }, 0)
+  const totalNetPayCalc = withSalary.reduce((sum, e) => {
+    const d = deductionMap[e.id]
+    return sum + (d?.net_pay ?? (e.monthly_salary ?? 0))
+  }, 0)
 
   function handleSalarySaved(updated: Employee) {
     setEmployees(prev => prev.map(e => e.id === updated.id ? updated : e))
@@ -110,20 +114,22 @@ export function PayrollView({ employees: initialEmployees, hoursMap, leaveMap, p
 
   function exportCSV() {
     const headers = [
-      'Name', 'Location', 'Monthly Salary', 'Daily Rate',
+      'Name', 'Location', 'Monthly Salary', 'Daily Rate', 'Hourly Rate',
       'Leave Days', 'PTO Balance', 'PTO Used',
-      'Shortfall Days', 'Shortfall Deduction', 'Net Pay',
+      'Deduction Days', 'Pay Deduction', 'Net Pay',
     ]
     const rows = employees.map(e => {
       const d = deductionMap[e.id]
       const dailyRate = e.monthly_salary != null
         ? ((e.monthly_salary / STANDARD_MONTHLY_HOURS) * 8).toFixed(2)
         : ''
+      const hourlyRate = e.monthly_salary != null ? (e.monthly_salary / STANDARD_MONTHLY_HOURS).toFixed(2) : ''
       return [
         e.name,
         e.office_location ?? '',
         e.monthly_salary ?? '',
         dailyRate,
+        hourlyRate,
         leaveMap[e.id] ?? 0,
         ptoMap[e.id] ?? 0,
         d?.pto_days_used ?? '',
@@ -167,7 +173,7 @@ export function PayrollView({ employees: initialEmployees, hoursMap, leaveMap, p
           </div>
         </div>
         <div className="stat-card">
-          <div className="stat-label">Total Shortfall</div>
+          <div className="stat-label">Pay Deductions</div>
           <div className="stat-value" style={{ fontSize: 24, color: totalShortfall > 0 ? 'var(--red)' : 'var(--text-primary)' }}>
             ${totalShortfall.toFixed(0)}<span className="stat-unit">deducted</span>
           </div>
@@ -193,11 +199,12 @@ export function PayrollView({ employees: initialEmployees, hoursMap, leaveMap, p
                 <th>Location</th>
                 <th>Monthly Salary</th>
                 <th>Daily Rate</th>
+                <th>Hourly Rate</th>
                 <th>Leave Days</th>
                 <th>PTO Balance</th>
                 <th>PTO Used</th>
-                <th>Shortfall Days</th>
-                <th>Shortfall Deduction</th>
+                <th>Deduction Days</th>
+                <th>Pay Deduction</th>
                 <th>Net Pay</th>
               </tr>
             </thead>
@@ -205,7 +212,7 @@ export function PayrollView({ employees: initialEmployees, hoursMap, leaveMap, p
               {employees.length === 0
                 ? (
                   <tr>
-                    <td colSpan={10} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px 16px' }}>
+                    <td colSpan={11} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px 16px' }}>
                       No active employees.
                     </td>
                   </tr>
@@ -239,6 +246,9 @@ export function PayrollView({ employees: initialEmployees, hoursMap, leaveMap, p
                       </td>
                       <td style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)', fontSize: 12.5 }}>
                         {dailyRate != null ? `$${dailyRate.toFixed(2)}` : '—'}
+                      </td>
+                      <td style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)', fontSize: 12.5 }}>
+                        {dailyRate != null ? `$${(dailyRate / 8).toFixed(2)}` : '—'}
                       </td>
                       <td style={{ fontVariantNumeric: 'tabular-nums', color: leave > 0 ? 'var(--amber)' : 'var(--text-muted)' }}>
                         {leave > 0 ? `${leave} days` : '—'}

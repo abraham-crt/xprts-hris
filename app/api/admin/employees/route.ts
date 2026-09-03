@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   if (session.user.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const { name, work_email, role, office_location, employment_start_date, monthly_salary, approver_id } = await req.json()
+  const { name, work_email, role, office_location, employment_start_date, monthly_salary, approver_id, employment_type, employee_code } = await req.json()
 
   if (!name || !work_email || !role || !office_location || !employment_start_date) {
     return NextResponse.json({ error: 'All required fields must be filled.' }, { status: 400 })
@@ -48,6 +48,8 @@ export async function POST(req: NextRequest) {
       status: 'active',
       monthly_salary: monthly_salary ?? null,
       approver_id: approver_id || null,
+      employment_type: employment_type || 'full-time',
+      employee_code: employee_code || null,
     })
     .select()
     .single()
@@ -68,7 +70,7 @@ export async function PUT(req: NextRequest) {
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   if (session.user.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const { id, name, role, status, office_location, monthly_salary, approver_id } = await req.json()
+  const { id, name, role, status, office_location, monthly_salary, approver_id, employment_type, employee_code } = await req.json()
   if (!id) return NextResponse.json({ error: 'Employee ID required.' }, { status: 400 })
 
   const updates: Record<string, unknown> = {}
@@ -78,6 +80,8 @@ export async function PUT(req: NextRequest) {
   if (office_location !== undefined) updates.office_location = office_location
   if (monthly_salary !== undefined) updates.monthly_salary = monthly_salary ?? null
   if (approver_id !== undefined) updates.approver_id = approver_id || null
+  if (employment_type !== undefined) updates.employment_type = employment_type
+  if (employee_code !== undefined) updates.employee_code = employee_code || null
 
   const { data, error } = await supabaseAdmin
     .from('employees')

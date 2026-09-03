@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { COUNTRIES, EMPLOYMENT_TYPES } from '@/lib/countries'
 
 type Employee = {
   id: string
@@ -12,6 +13,8 @@ type Employee = {
   office_location: string | null
   monthly_salary: number | null
   approver_id: string | null
+  employment_type: string | null
+  employee_code: string | null
 }
 
 const ROLES = ['employee', 'approver', 'admin']
@@ -23,6 +26,10 @@ const ROLE_BADGE: Record<string, string> = {
 
 function fmt(d: string) {
   return new Date(d + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+function capitalize(s: string) {
+  return s.charAt(0).toUpperCase() + s.slice(1)
 }
 
 function EmployeeModal({ employee, allEmployees, onClose, onSave }: {
@@ -44,6 +51,8 @@ function EmployeeModal({ employee, allEmployees, onClose, onSave }: {
     employee?.monthly_salary != null ? String(employee.monthly_salary) : '',
   )
   const [approverId, setApproverId] = useState(employee?.approver_id ?? '')
+  const [employmentType, setEmploymentType] = useState(employee?.employment_type ?? 'full-time')
+  const [employeeCode, setEmployeeCode] = useState(employee?.employee_code ?? '')
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
 
@@ -71,6 +80,8 @@ function EmployeeModal({ employee, allEmployees, onClose, onSave }: {
           office_location: location,
           monthly_salary: salaryValue,
           approver_id: approverId || null,
+          employment_type: employmentType,
+          employee_code: employeeCode || null,
         }
       : {
           name,
@@ -80,6 +91,8 @@ function EmployeeModal({ employee, allEmployees, onClose, onSave }: {
           employment_start_date: startDate,
           monthly_salary: salaryValue,
           approver_id: approverId || null,
+          employment_type: employmentType,
+          employee_code: employeeCode || null,
         }
 
     const res = await fetch('/api/admin/employees', {
@@ -94,7 +107,7 @@ function EmployeeModal({ employee, allEmployees, onClose, onSave }: {
 
   return (
     <div className="modal-overlay">
-      <div className="modal" style={{ maxWidth: 520 }}>
+      <div className="modal" style={{ maxWidth: 560 }}>
         <div className="modal-title">{isEdit ? 'Edit Employee' : 'Add Employee'}</div>
         <div className="modal-sub">
           {isEdit ? `Updating record for ${employee!.name}` : 'Create a new employee account'}
@@ -118,19 +131,33 @@ function EmployeeModal({ employee, allEmployees, onClose, onSave }: {
               <label className="field-label">Role *</label>
               <select value={role} onChange={e => setRole(e.target.value)} className="field-input">
                 {ROLES.map(r => (
-                  <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>
+                  <option key={r} value={r}>{capitalize(r)}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="field-label">Employment Type</label>
+              <select value={employmentType} onChange={e => setEmploymentType(e.target.value)} className="field-input">
+                {EMPLOYMENT_TYPES.map(t => (
+                  <option key={t} value={t}>{capitalize(t)}</option>
                 ))}
               </select>
             </div>
 
             <div>
               <label className="field-label">Office Location *</label>
-              <input
-                value={location}
-                onChange={e => setLocation(e.target.value)}
-                className="field-input"
-                placeholder="e.g. Philippines, Ethiopia, USA…"
-              />
+              <select value={location} onChange={e => setLocation(e.target.value)} className="field-input">
+                <option value="">Select country…</option>
+                {COUNTRIES.map(c => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="field-label">Employee Code <span style={{ color: 'var(--text-muted)' }}>(optional)</span></label>
+              <input value={employeeCode} onChange={e => setEmployeeCode(e.target.value)} className="field-input" placeholder="e.g. EMP-001" />
             </div>
 
             {!isEdit && (
@@ -193,8 +220,13 @@ export function EmployeesView({ initialEmployees }: { initialEmployees: Employee
   const [modalEmployee, setModalEmployee] = useState<Employee | null>(null)
   const [showModal, setShowModal] = useState(false)
   const [filter, setFilter] = useState<'all' | 'active' | 'inactive'>('active')
+  const [search, setSearch] = useState('')
 
-  const visible = employees.filter(e => filter === 'all' || e.status === filter)
+  const visible = employees.filter(e => {
+    if (filter !== 'all' && e.status !== filter) return false
+    if (search && !e.name.toLowerCase().includes(search.toLowerCase()) && !e.work_email.toLowerCase().includes(search.toLowerCase())) return false
+    return true
+  })
   const empMap = Object.fromEntries(employees.map(e => [e.id, e]))
 
   function handleSave(saved: Employee) {
@@ -236,12 +268,21 @@ export function EmployeesView({ initialEmployees }: { initialEmployees: Employee
         </button>
       </div>
 
-      <div className="tabs">
-        {(['active', 'inactive', 'all'] as const).map(f => (
-          <button key={f} onClick={() => setFilter(f)} className={`tab-btn ${filter === f ? 'active' : ''}`} style={{ textTransform: 'capitalize' }}>
-            {f}
-          </button>
-        ))}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div className="tabs" style={{ flex: 1 }}>
+          {(['active', 'inactive', 'all'] as const).map(f => (
+            <button key={f} onClick={() => setFilter(f)} className={`tab-btn ${filter === f ? 'active' : ''}`} style={{ textTransform: 'capitalize' }}>
+              {f}
+            </button>
+          ))}
+        </div>
+        <input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search name or email…"
+          className="field-input"
+          style={{ maxWidth: 240, marginBottom: 0, fontSize: 12.5 }}
+        />
       </div>
 
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
@@ -250,8 +291,10 @@ export function EmployeesView({ initialEmployees }: { initialEmployees: Employee
             <thead>
               <tr>
                 <th>Name</th>
+                <th>Code</th>
                 <th>Email</th>
                 <th>Role</th>
+                <th>Type</th>
                 <th>Location</th>
                 <th>Start Date</th>
                 <th>Monthly Salary</th>
@@ -264,7 +307,7 @@ export function EmployeesView({ initialEmployees }: { initialEmployees: Employee
               {visible.length === 0
                 ? (
                   <tr>
-                    <td colSpan={9} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px 16px' }}>
+                    <td colSpan={11} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px 16px' }}>
                       No employees found.
                     </td>
                   </tr>
@@ -272,8 +315,14 @@ export function EmployeesView({ initialEmployees }: { initialEmployees: Employee
                 : visible.map(e => (
                   <tr key={e.id}>
                     <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{e.name}</td>
+                    <td style={{ color: 'var(--text-muted)', fontSize: 12, fontFamily: 'monospace' }}>
+                      {e.employee_code ?? <span style={{ color: 'var(--text-muted)', opacity: 0.5 }}>—</span>}
+                    </td>
                     <td style={{ color: 'var(--text-muted)', fontSize: 12.5 }}>{e.work_email}</td>
                     <td><span className={`badge ${ROLE_BADGE[e.role] ?? 'badge-gray'}`}>{e.role}</span></td>
+                    <td style={{ fontSize: 12.5, color: 'var(--text-muted)', textTransform: 'capitalize' }}>
+                      {e.employment_type ?? 'full-time'}
+                    </td>
                     <td style={{ textTransform: 'capitalize', fontSize: 13 }}>{e.office_location ?? '—'}</td>
                     <td style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>
                       {e.employment_start_date ? fmt(e.employment_start_date) : '—'}
