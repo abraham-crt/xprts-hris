@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { supabaseAdmin } from '@/lib/supabase'
 import { laToday, laPeriodBounds } from '@/lib/dates'
 import { computeAccrualUpdates, type AccrualEvent } from '@/lib/pto'
+import { holidayMap, usFederalHolidays } from '@/lib/holidays'
 import Link from 'next/link'
 
 export default async function DashboardPage() {
@@ -210,11 +211,25 @@ async function AdminDashboard() {
 // ── Employee dashboard ───────────────────────────────────────────────────────
 
 async function EmployeeDashboard(userId: string, email: string, today: string) {
-  const [{ data: employee }, { data: ptoBefore }, { data: pendingLeave }, { data: todayEntry }] = await Promise.all([
+  const [year, month] = today.split('-').map(Number)
+
+  const [
+    { data: employee },
+    { data: ptoBefore },
+    { data: pendingLeave },
+    { data: todayEntry },
+    { data: outToday },
+  ] = await Promise.all([
     supabaseAdmin.from('employees').select('name, role, employment_start_date').eq('work_email', email).single(),
     supabaseAdmin.from('pto_balances').select('current_balance, last_accrual_date, accrual_history').eq('employee_id', userId).single(),
     supabaseAdmin.from('leave_requests').select('id').eq('employee_id', userId).eq('status', 'pending'),
     supabaseAdmin.from('time_entries').select('clock_in, clock_out').eq('employee_id', userId).eq('date', today).single(),
+    supabaseAdmin
+      .from('leave_requests')
+      .select('days_requested, start_date, end_date, employees!inner(name)')
+      .eq('status', 'approved')
+      .lte('start_date', today)
+      .gte('end_date', today),
   ])
 
   let ptoBalance = ptoBefore?.current_balance ?? 0
@@ -237,13 +252,36 @@ async function EmployeeDashboard(userId: string, email: string, today: string) {
   const clockStatus = !todayEntry ? 'Not clocked in' : todayEntry.clock_out ? 'Clocked out' : 'Clocked in'
   const clockColor = !todayEntry ? 'badge-amber' : todayEntry.clock_out ? 'badge-gray' : 'badge-green'
 
+  // Calendar data
+  const holidays = holidayMap(year)
+  const nextYearHolidays = holidayMap(year + 1)
+  const allHolidays = { ...holidays, ...nextYearHolidays }
+  const upcomingHolidays = [...usFederalHolidays(year), ...usFederalHolidays(year + 1)]
+    .filter(h => h.date >= today)
+    .slice(0, 5)
+
+  // Build mini-calendar for current month
+  const firstWeekday = new Date(year, month - 1, 1).getDay()
+  const daysInMonth = new Date(year, month, 0).getDate()
+  const monthName = new Date(year, month - 1, 1).toLocaleString('en-US', { month: 'long' })
+  const todayDay = parseInt(today.split('-')[2])
+
+  const calendarCells: (number | null)[] = [
+    ...Array(firstWeekday).fill(null),
+    ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
+  ]
+  // Pad to complete weeks
+  while (calendarCells.length % 7 !== 0) calendarCells.push(null)
+
   return (
     <div>
       <div className="page-header">
         <h1 className="page-title">Good {getGreeting()}, {employee?.name?.split(' ')[0] ?? 'there'}</h1>
-        <p className="page-subtitle">Here&apos;s your summary for today.</p>
+        <p className="page-subtitle">Here&apos;s your summary for today — {today}.</p>
       </div>
-      <div className="stat-grid">
+
+      {/* Stat cards */}
+      <div className="stat-grid" style={{ marginBottom: 16 }}>
         <div className="stat-card">
           <div className="stat-label">PTO Balance</div>
           <div className="stat-value">{ptoBalance}<span className="stat-unit">days</span></div>
@@ -257,25 +295,133 @@ async function EmployeeDashboard(userId: string, email: string, today: string) {
           <div style={{ marginTop: 8 }}><span className={`badge ${clockColor}`}>{clockStatus}</span></div>
         </div>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+
+      {/* Quick actions */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
         <Link href="/dashboard/time" className="card-link">
-          <div className="card">
+          <div className="card" style={{ padding: '14px 18px' }}>
             <div className="card-title">My Time</div>
             <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>
               {!todayEntry ? "You haven't clocked in today." : todayEntry.clock_out ? 'Your day is logged.' : 'Timer is running.'}
             </p>
-            <p style={{ fontSize: 12, color: 'var(--accent)', marginTop: 12, fontWeight: 500 }}>Go to Time →</p>
+            <p style={{ fontSize: 12, color: 'var(--accent)', marginTop: 10, fontWeight: 500 }}>Go to Time →</p>
           </div>
         </Link>
         <Link href="/dashboard/leave" className="card-link">
-          <div className="card">
+          <div className="card" style={{ padding: '14px 18px' }}>
             <div className="card-title">Leave Requests</div>
             <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>
               {(pendingLeave?.length ?? 0) > 0 ? `${pendingLeave!.length} request(s) awaiting approval.` : 'No pending leave requests.'}
             </p>
-            <p style={{ fontSize: 12, color: 'var(--accent)', marginTop: 12, fontWeight: 500 }}>Go to Leave →</p>
+            <p style={{ fontSize: 12, color: 'var(--accent)', marginTop: 10, fontWeight: 500 }}>Go to Leave →</p>
           </div>
         </Link>
+      </div>
+
+      {/* Calendar + Who's Out */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+        {/* Mini calendar */}
+        <div className="card">
+          <div className="card-title" style={{ marginBottom: 14 }}>{monthName} {year}</div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <thead>
+              <tr>
+                {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(d => (
+                  <th key={d} style={{ textAlign: 'center', padding: '2px 0', fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, letterSpacing: '0.04em' }}>{d}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {Array.from({ length: calendarCells.length / 7 }, (_, wk) => (
+                <tr key={wk}>
+                  {calendarCells.slice(wk * 7, wk * 7 + 7).map((day, i) => {
+                    if (!day) return <td key={i} />
+                    const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+                    const isToday = day === todayDay
+                    const isHoliday = !!allHolidays[dateStr]
+                    const isSunday = i === 0
+                    const isSaturday = i === 6
+                    return (
+                      <td key={i} style={{ textAlign: 'center', padding: '3px 0' }}>
+                        <span
+                          title={isHoliday ? allHolidays[dateStr] : undefined}
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                            width: 26, height: 26, borderRadius: '50%',
+                            fontSize: 12,
+                            fontWeight: isToday ? 700 : 400,
+                            background: isToday ? 'var(--accent)' : isHoliday ? 'var(--accent-muted, rgba(99,102,241,0.12))' : 'transparent',
+                            color: isToday ? '#fff' : isHoliday ? 'var(--accent)' : (isSunday || isSaturday) ? 'var(--text-muted)' : 'var(--text-primary)',
+                            cursor: isHoliday ? 'help' : 'default',
+                          }}
+                        >
+                          {day}
+                        </span>
+                      </td>
+                    )
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div style={{ marginTop: 12, display: 'flex', gap: 12, fontSize: 11, color: 'var(--text-muted)' }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', background: 'var(--accent)' }} />
+              Today
+            </span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', background: 'var(--accent-muted, rgba(99,102,241,0.12))', border: '1px solid var(--accent)' }} />
+              Holiday
+            </span>
+          </div>
+        </div>
+
+        {/* Upcoming holidays + who's out */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div className="card" style={{ flex: '1 1 auto' }}>
+            <div className="card-title" style={{ marginBottom: 10 }}>Upcoming US Holidays</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {upcomingHolidays.map(h => (
+                <div key={h.date} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12 }}>
+                  <span style={{ color: 'var(--text-primary)' }}>{h.name}</span>
+                  <span style={{ color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>{h.date}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="card" style={{ flex: '0 0 auto' }}>
+            <div className="card-title" style={{ marginBottom: 10 }}>Out Today</div>
+            {(outToday ?? []).length === 0 ? (
+              <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>Everyone&apos;s in today.</p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {(outToday ?? []).map((r: { days_requested: number; start_date: string; end_date: string; employees: { name: string } | { name: string }[] }, i: number) => {
+                  const emp = Array.isArray(r.employees) ? r.employees[0] : r.employees
+                  return (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+                      <span className="dot-amber" />
+                      <span style={{ color: 'var(--text-primary)' }}>{emp?.name ?? '—'}</span>
+                      <span style={{ color: 'var(--text-muted)', marginLeft: 'auto' }}>{r.days_requested}d</span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* BayLegal Updates */}
+      <div className="card">
+        <div className="card-title" style={{ marginBottom: 10 }}>BayLegal Updates</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ padding: '10px 14px', borderRadius: 8, background: 'var(--surface-secondary, var(--sidebar-bg))', fontSize: 13 }}>
+            <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: 3 }}>Welcome to the HRIS Portal</div>
+            <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>Track your time, manage leave, and view your PTO balance all in one place. Reach out to HR for any questions.</div>
+          </div>
+          <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>Company announcements will appear here.</p>
+        </div>
       </div>
     </div>
   )
