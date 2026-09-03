@@ -20,7 +20,7 @@ export default async function EmployeesPage() {
     <div>
       <div className="page-header">
         <h1 className="page-title">Employees</h1>
-        <p className="page-subtitle">Manage offshore staff — Philippines &amp; Ethiopia.</p>
+        <p className="page-subtitle">Manage your team.</p>
       </div>
       <EmployeesView initialEmployees={employees ?? []} />
     </div>

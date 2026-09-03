@@ -15,7 +15,6 @@ type Employee = {
 }
 
 const ROLES = ['employee', 'approver', 'admin']
-const LOCATIONS = ['philippines', 'ethiopia']
 const ROLE_BADGE: Record<string, string> = {
   employee: 'badge-gray',
   approver: 'badge-blue',
@@ -37,7 +36,7 @@ function EmployeeModal({ employee, allEmployees, onClose, onSave }: {
   const [email, setEmail] = useState(employee?.work_email ?? '')
   const [role, setRole] = useState(employee?.role ?? 'employee')
   const [status, setStatus] = useState(employee?.status ?? 'active')
-  const [location, setLocation] = useState(employee?.office_location ?? 'philippines')
+  const [location, setLocation] = useState(employee?.office_location ?? '')
   const [startDate, setStartDate] = useState(
     employee?.employment_start_date ?? new Date().toISOString().split('T')[0],
   )
@@ -126,11 +125,12 @@ function EmployeeModal({ employee, allEmployees, onClose, onSave }: {
 
             <div>
               <label className="field-label">Office Location *</label>
-              <select value={location} onChange={e => setLocation(e.target.value)} className="field-input">
-                {LOCATIONS.map(l => (
-                  <option key={l} value={l}>{l.charAt(0).toUpperCase() + l.slice(1)}</option>
-                ))}
-              </select>
+              <input
+                value={location}
+                onChange={e => setLocation(e.target.value)}
+                className="field-input"
+                placeholder="e.g. Philippines, Ethiopia, USA…"
+              />
             </div>
 
             {!isEdit && (
