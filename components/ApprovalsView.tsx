@@ -173,11 +173,29 @@ export function ApprovalsView({ employees, initialRequests }: {
   const empMap = Object.fromEntries(employees.map(e => [e.id, e]))
 
   const pending = requests.filter(r => r.status === 'pending')
+
+  const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
+  const weekAgoMs = Date.now() - 7 * 86400000
+  const monthStart = (() => {
+    const [y, m] = todayStr.split('-')
+    return `${y}-${m}-01`
+  })()
+
+  const pendingToday = useMemo(() => {
+    return pending.filter(r => r.created_at.startsWith(todayStr))
+  }, [pending, todayStr])
+
   const approvedThisWeek = useMemo(() => {
-    const weekAgo = new Date()
-    weekAgo.setDate(weekAgo.getDate() - 7)
-    return requests.filter(r => r.status === 'approved' && new Date(r.reviewed_at ?? r.created_at) >= weekAgo)
-  }, [requests])
+    return requests.filter(r => r.status === 'approved' && new Date(r.reviewed_at ?? r.created_at).getTime() >= weekAgoMs)
+  }, [requests, weekAgoMs])
+
+  const approvedThisMonth = useMemo(() => {
+    return requests.filter(r => r.status === 'approved' && (r.reviewed_at ?? r.created_at) >= monthStart)
+  }, [requests, monthStart])
+
+  const deniedThisMonth = useMemo(() => {
+    return requests.filter(r => r.status === 'denied' && (r.reviewed_at ?? r.created_at) >= monthStart)
+  }, [requests, monthStart])
 
   const filtered = useMemo(() => {
     let base = tab === 'pending' ? pending
@@ -225,14 +243,15 @@ export function ApprovalsView({ employees, initialRequests }: {
       {/* Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
         {[
-          { label: 'Pending', count: tabCounts.pending, color: 'var(--amber)' },
-          { label: 'Approved', count: tabCounts.approved, color: 'var(--green)' },
-          { label: 'Denied', count: tabCounts.denied, color: 'var(--red)' },
-          { label: 'Approved This Week', count: approvedThisWeek.length, color: 'var(--text-muted)' },
+          { label: 'Pending', count: tabCounts.pending, color: 'var(--amber)', sub: `${pendingToday.length} submitted today` },
+          { label: 'Approved This Week', count: approvedThisWeek.length, color: 'var(--green)', sub: null },
+          { label: 'Approved This Month', count: approvedThisMonth.length, color: 'var(--green)', sub: null },
+          { label: 'Denied This Month', count: deniedThisMonth.length, color: deniedThisMonth.length > 0 ? 'var(--red)' : 'var(--text-muted)', sub: null },
         ].map(s => (
           <div key={s.label} className="stat-card">
             <div className="stat-label">{s.label}</div>
             <div className="stat-value" style={{ color: s.color }}>{s.count}</div>
+            {s.sub && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{s.sub}</div>}
           </div>
         ))}
       </div>

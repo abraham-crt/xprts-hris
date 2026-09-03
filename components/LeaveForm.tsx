@@ -51,6 +51,30 @@ function fmt(dateStr: string) {
   })
 }
 
+function laToday(): string {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
+}
+
+function laPeriodBounds(): { periodStart: string; periodEnd: string } {
+  const [year, month] = laToday().split('-').map(Number)
+  const prevMonth = month === 1 ? 12 : month - 1
+  const prevYear = month === 1 ? year - 1 : year
+  return {
+    periodStart: `${prevYear}-${String(prevMonth).padStart(2, '0')}-26`,
+    periodEnd: `${year}-${String(month).padStart(2, '0')}-25`,
+  }
+}
+
+function monthBounds(): { start: string; end: string } {
+  const today = laToday()
+  const [year, month] = today.split('-').map(Number)
+  const lastDay = new Date(year, month, 0).getDate()
+  return {
+    start: `${year}-${String(month).padStart(2, '0')}-01`,
+    end: `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`,
+  }
+}
+
 export function LeaveForm({ initialRequests, ptoBalance }: {
   initialRequests: LeaveRequest[]
   ptoBalance: number
@@ -68,6 +92,9 @@ export function LeaveForm({ initialRequests, ptoBalance }: {
   const [warning, setWarning] = useState('')
   const [saving, setSaving] = useState(false)
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'denied'>('all')
+  const [dateRange, setDateRange] = useState<'period' | 'month' | 'custom' | 'all'>('all')
+  const [customFrom, setCustomFrom] = useState('')
+  const [customTo, setCustomTo] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
 
   const isHalf = mode === 'half'
@@ -128,7 +155,17 @@ export function LeaveForm({ initialRequests, ptoBalance }: {
     setSaving(false)
   }
 
-  const filteredRequests = statusFilter === 'all' ? requests : requests.filter(r => r.status === statusFilter)
+  const filteredRequests = (() => {
+    let base = statusFilter === 'all' ? requests : requests.filter(r => r.status === statusFilter)
+    if (dateRange !== 'all') {
+      let from = '', to = ''
+      if (dateRange === 'period') { const b = laPeriodBounds(); from = b.periodStart; to = b.periodEnd }
+      else if (dateRange === 'month') { const b = monthBounds(); from = b.start; to = b.end }
+      else if (dateRange === 'custom') { from = customFrom; to = customTo }
+      if (from && to) base = base.filter(r => r.start_date >= from && r.start_date <= to)
+    }
+    return base
+  })()
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -297,8 +334,34 @@ export function LeaveForm({ initialRequests, ptoBalance }: {
 
       {/* Request history */}
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-        <div style={{ padding: '14px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div className="card-title" style={{ marginBottom: 0 }}>My Requests</div>
+        <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <div className="card-title" style={{ marginBottom: 0, flex: 1, minWidth: 100 }}>My Requests</div>
+          {/* Date range filter */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {([
+              { v: 'all', label: 'All Time' },
+              { v: 'period', label: 'This Pay Period' },
+              { v: 'month', label: 'This Month' },
+              { v: 'custom', label: 'Custom' },
+            ] as const).map(opt => (
+              <button
+                key={opt.v}
+                onClick={() => setDateRange(opt.v)}
+                className={`tab-btn ${dateRange === opt.v ? 'active' : ''}`}
+                style={{ fontSize: 11, padding: '4px 10px' }}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          {dateRange === 'custom' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)} className="field-input" style={{ marginBottom: 0, width: 140, fontSize: 12 }} />
+              <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>→</span>
+              <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)} className="field-input" style={{ marginBottom: 0, width: 140, fontSize: 12 }} min={customFrom} />
+            </div>
+          )}
+          {/* Status tabs */}
           <div className="tabs" style={{ marginBottom: 0 }}>
             {(['all', 'pending', 'approved', 'denied'] as const).map(s => (
               <button
