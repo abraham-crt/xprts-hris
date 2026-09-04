@@ -443,8 +443,9 @@ export function AdminTimeView({ employees, entries, edits, today, yesterday, wee
       })
       const total = dayHours.reduce((s: number, h) => s + (h ?? 0), 0)
       const totalOT = dayHours.reduce((s: number, h) => s + (h != null ? otH(h) : 0), 0)
+      const weeklyOTH = Math.max(0, Math.round((total - 40) * 10) / 10)
       const daysPresent = dayHours.filter(h => h != null).length
-      return { emp, dayHours, total, totalOT, daysPresent }
+      return { emp, dayHours, total, totalOT, weeklyOTH, daysPresent }
     })
 
     const grandTotal = rows.reduce((s: number, r) => s + r.total, 0)
@@ -498,6 +499,23 @@ export function AdminTimeView({ employees, entries, edits, today, yesterday, wee
             </table>
           </div>
         </div>
+
+        {/* OT Panel Weekly */}
+        {rows.filter(r => r.totalOT > 0 || r.weeklyOTH > 0).length > 0 && (
+          <div className="card" style={{ background: 'rgba(245,158,11,0.06)', borderColor: 'rgba(245,158,11,0.3)' }}>
+            <div className="card-title" style={{ color: 'var(--amber)', marginBottom: 10 }}>⚠ Overtime This Week</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+              {rows.filter(r => r.totalOT > 0 || r.weeklyOTH > 0).sort((a, b) => b.total - a.total).map(({ emp, total, totalOT, weeklyOTH }) => (
+                <div key={emp.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', background: 'var(--surface)', borderRadius: 8, border: '1px solid var(--border)' }}>
+                  <span style={{ fontWeight: 600, fontSize: 13 }}>{emp.name}</span>
+                  <span style={{ fontSize: 12, color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>{fmtH(Math.round(total * 10) / 10)}</span>
+                  {totalOT > 0 && <span style={{ fontSize: 11, color: 'var(--amber)', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>+{fmtH(totalOT)} daily OT</span>}
+                  {weeklyOTH > 0 && <span style={{ fontSize: 11, padding: '1px 5px', borderRadius: 4, background: 'rgba(245,158,11,0.15)', color: 'var(--amber)', fontWeight: 700 }}>+{fmtH(weeklyOTH)} over 40h</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     )
   }

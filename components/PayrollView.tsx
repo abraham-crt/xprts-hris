@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 
 type Employee = {
   id: string
@@ -228,7 +229,11 @@ export function PayrollView({ employees: initialEmployees, hoursMap, leaveMap, p
 
                   return (
                     <tr key={e.id}>
-                      <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{e.name}</td>
+                      <td style={{ fontWeight: 600 }}>
+                        <Link href={`/dashboard/admin/employees/${e.id}`} style={{ color: 'var(--accent)', textDecoration: 'none', fontWeight: 600 }}>
+                          {e.name}
+                        </Link>
+                      </td>
                       <td style={{ textTransform: 'capitalize', color: 'var(--text-muted)', fontSize: 12.5 }}>
                         {e.office_location ?? '—'}
                       </td>

@@ -61,8 +61,9 @@ async function AdminDashboard() {
     { data: periodEntries },
     { data: payrollRows },
     { data: salaryRows },
+    { data: lowPtoRows },
   ] = await Promise.all([
-    supabaseAdmin.from('employees').select('id, name, office_location').eq('status', 'active'),
+    supabaseAdmin.from('employees').select('id, name, office_location, monthly_salary, approver_id, manager_id').eq('status', 'active'),
     supabaseAdmin
       .from('time_entries')
       .select('employee_id, clock_in, employees!inner(name, office_location)')
@@ -70,7 +71,7 @@ async function AdminDashboard() {
       .is('clock_out', null),
     supabaseAdmin
       .from('leave_requests')
-      .select('id, days_requested, start_date, end_date, employees!employee_id(name)')
+      .select('id, days_requested, start_date, end_date, created_at, employees!employee_id(name)')
       .eq('status', 'pending'),
     supabaseAdmin
       .from('leave_requests')
@@ -114,6 +115,10 @@ async function AdminDashboard() {
       .select('monthly_salary')
       .eq('status', 'active')
       .not('monthly_salary', 'is', null),
+    supabaseAdmin
+      .from('pto_balances')
+      .select('employee_id, current_balance')
+      .lt('current_balance', 1),
   ])
 
   // ── Derived values ───────────────────────────────────────────────────────
@@ -161,6 +166,15 @@ async function AdminDashboard() {
 
   // Name lookup for period OT (join by employee_id from allActive)
   const nameById = Object.fromEntries((allActive ?? []).map(e => [e.id, e.name]))
+
+  // ── Data quality alerts ──────────────────────────────────────────────────
+  const noSalary = (allActive ?? []).filter((e: { monthly_salary: number | null }) => e.monthly_salary == null)
+  const noApprover = (allActive ?? []).filter((e: { approver_id: string | null }) => !e.approver_id)
+  const noManager = (allActive ?? []).filter((e: { manager_id: string | null }) => !e.manager_id)
+  const lowPtoEmployeeIds = new Set((lowPtoRows ?? []).map((r: { employee_id: string }) => r.employee_id))
+  const lowPtoEmployees = (allActive ?? []).filter((e: { id: string }) => lowPtoEmployeeIds.has(e.id))
+  const sevenDaysAgo = adjDate(today, -7)
+  const stalePending = (pendingApprovals ?? []).filter((r: { created_at: string }) => r.created_at.slice(0, 10) < sevenDaysAgo)
 
   // ── Alert counts for top stat bar ───────────────────────────────────────
   const alertCount = (missingClockOuts?.length ?? 0) + lateArrivals.length + (missingClockIns.length > 0 ? 1 : 0)
@@ -270,6 +284,44 @@ async function AdminDashboard() {
           />
         </div>
       </div>
+
+      {/* ── Data Quality Alerts ── */}
+      {(noSalary.length > 0 || noApprover.length > 0 || noManager.length > 0 || lowPtoEmployees.length > 0 || stalePending.length > 0) && (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Setup Alerts</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10 }}>
+            {([
+              { label: 'No Salary Set', items: noSalary.map((e: { id: string; name: string }) => ({ id: e.id, name: e.name, href: `/dashboard/admin/employees/${e.id}` })), color: 'var(--red)' },
+              { label: 'No Approver', items: noApprover.map((e: { id: string; name: string }) => ({ id: e.id, name: e.name, href: `/dashboard/admin/employees/${e.id}` })), color: 'var(--amber)' },
+              { label: 'No Manager', items: noManager.map((e: { id: string; name: string }) => ({ id: e.id, name: e.name, href: `/dashboard/admin/employees/${e.id}` })), color: 'var(--amber)' },
+              { label: 'Low PTO (< 1 day)', items: lowPtoEmployees.map((e: { id: string; name: string }) => ({ id: e.id, name: e.name, href: `/dashboard/admin/employees/${e.id}` })), color: 'var(--amber)' },
+              { label: 'Pending > 7 days', items: stalePending.map((r: { id: string; employees: { name: string } | { name: string }[] }) => { const emp = Array.isArray(r.employees) ? r.employees[0] : r.employees; return { id: r.id, name: emp?.name ?? '—', href: '/dashboard/approvals' } }), color: 'var(--red)' },
+            ] as { label: string; items: { id: string; name: string; href: string }[]; color: string }[]).map(alert => (
+              <div key={alert.label} className="card" style={{ padding: '12px 16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: alert.items.length > 0 ? alert.color : 'var(--text-muted)' }}>{alert.label}</div>
+                  {alert.items.length > 0 && (
+                    <span style={{ background: alert.color, color: '#fff', borderRadius: 10, fontSize: 10, fontWeight: 700, padding: '1px 6px' }}>
+                      {alert.items.length}
+                    </span>
+                  )}
+                </div>
+                {alert.items.length === 0
+                  ? <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>All clear</p>
+                  : <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                      {alert.items.slice(0, 4).map(e => (
+                        <Link key={e.id} href={e.href} style={{ fontSize: 11.5, color: 'var(--text-secondary)', textDecoration: 'none', fontWeight: 500 }}>
+                          {e.name}
+                        </Link>
+                      ))}
+                      {alert.items.length > 4 && <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>+{alert.items.length - 4} more</span>}
+                    </div>
+                }
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ── Today's attendance ── */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
